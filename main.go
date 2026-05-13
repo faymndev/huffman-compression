@@ -1,88 +1,20 @@
 package main
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
-	"os"
+	"slices"
 	"strings"
-	"unicode/utf8"
 )
 
-const RAW_FILE = "./example.txt"
-const COMPRESSED_FILE = "./example.hfm"
-
 func main() {
-	CompressFromPath(RAW_FILE, COMPRESSED_FILE)
-	DecompressFromPath(COMPRESSED_FILE)
-}
-
-func CompressFromPath(path string, destination string) {
-	data, err := os.ReadFile(path)
+	compressed, dict, err := Compress("Hello World")
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
-	result, dict, err := CompressStr(string(data))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	f, err := os.OpenFile(destination, os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-
-	// dict header:
-	// - number of rows
-	// - each row has the rune, size of the key, and the key (bytes)
-	buf := make([]byte, 4)
-
-	binary.BigEndian.PutUint32(buf, uint32(len(dict)))
-	f.Write(buf)
-
-	for key, value := range dict {
-		binary.BigEndian.PutUint32(buf, uint32(key))
-		f.Write(buf)
-		f.Write([]byte{value})
-	}
-	f.Write(result)
-	f.Sync()
-
-}
-
-const DICT_LENGTH_SIZE = 4
-const DICT_ROW_SIZE = 5
-
-func DecompressFromPath(path string) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	dictLength := binary.BigEndian.Uint32(data[:DICT_LENGTH_SIZE])
-	dict := make(map[byte]rune)
-	for i := range dictLength {
-		start := DICT_LENGTH_SIZE + i*DICT_ROW_SIZE
-		r := rune(binary.BigEndian.Uint32(data[start : start+4]))
-		v := data[start+4]
-		dict[v] = r
-	}
-
-	sb := strings.Builder{}
-	start := DICT_LENGTH_SIZE + dictLength*DICT_ROW_SIZE
-	for _, b := range data[start:] {
-		letter, ok := dict[b]
-		if ok {
-			sb.WriteRune(letter)
-		} else {
-			log.Fatalf("dictionary could not handle %v", b)
-		}
-	}
-
-	fmt.Println(sb.String())
+	decompressed, err := DecompressOriginal(compressed, dict)
+	fmt.Println(decompressed)
 }
 
 func DecompressOriginal(input []byte, dict map[rune]byte) (result string, err error) {
@@ -101,7 +33,7 @@ func DecompressOriginal(input []byte, dict map[rune]byte) (result string, err er
 	return
 }
 
-func CompressStr(input string) (result []byte, dict map[rune]byte, err error) {
+func Compress(input string) (result []byte, huffmanNode *HuffmanNode, err error) {
 	heap := NewHeap(func(a, b *HuffmanNode) bool {
 		return a.Frequency < b.Frequency
 	})
@@ -126,33 +58,52 @@ func CompressStr(input string) (result []byte, dict map[rune]byte, err error) {
 	}
 
 	root, ok := heap.Pop()
+	huffmanNode = root
 	if !ok {
 		err = errors.New("Expected a root node")
 		return
 	}
 
-	dict = make(map[rune]byte)
-	Traverse(root, 0b0, &dict)
+	dict := make(map[rune]Code)
+	Traverse(root, []int{}, &dict)
 
-	result = make([]byte, utf8.RuneCountInString(input))
-	for i, r := range input {
-		result[i] = dict[r]
-	}
+	// for _, r := range input {
+	// 	// result = append(result, (d[r].Bits))
+	// }
 
 	return
 }
 
-func Traverse(node *HuffmanNode, code byte, dict *map[rune]byte) {
+func Traverse(node *HuffmanNode, code []int, dict *map[rune]Code) {
 	if node == nil {
 		return
 	}
 
-	if node.Data != 0 {
-		(*dict)[node.Data] = code
-	}
+	Traverse(node.LeftNode, append(slices.Clone(code), 0), dict)
+	Traverse(node.RightNode, append(slices.Clone(code), 1), dict)
 
-	Traverse(node.LeftNode, code<<1, dict)
-	Traverse(node.RightNode, code<<1+0b1, dict)
+	// leaf node (character)
+	if node.LeftNode == nil && node.RightNode == nil {
+		// i think real huffman compression algos (that work on ascii anyways) tend to use arrays, such at index 0 = a
+		// so array[a] = Code
+		(*dict)[node.Data] = NewCode(code)
+	}
+}
+
+type Code struct {
+	Value uint64
+	Bits  int
+}
+
+func NewCode(code []int) Code {
+	var value uint64 = 0
+	for _, v := range code {
+		value = value*10 + uint64(v)
+	}
+	return Code{
+		Value: value,
+		Bits:  len(code),
+	}
 }
 
 func GetFrequencies(raw string) map[rune]int {
