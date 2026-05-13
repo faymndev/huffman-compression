@@ -3,24 +3,33 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strings"
 	"unicode/utf8"
 )
 
+const RAW_FILE = "./example.txt"
+const COMPRESSED_FILE = "./example.hfm"
+
 func main() {
-	data, err := os.ReadFile("./example.txt")
+	CompressFromPath(RAW_FILE, COMPRESSED_FILE)
+	DecompressFromPath(COMPRESSED_FILE)
+}
+
+func CompressFromPath(path string, destination string) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	result, dict, err := Compress(string(data))
+	result, dict, err := CompressStr(string(data))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	f, err := os.OpenFile("example.hfm", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(destination, os.O_APPEND|os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -41,6 +50,39 @@ func main() {
 	}
 	f.Write(result)
 	f.Sync()
+
+}
+
+const DICT_LENGTH_SIZE = 4
+const DICT_ROW_SIZE = 5
+
+func DecompressFromPath(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	dictLength := binary.BigEndian.Uint32(data[:DICT_LENGTH_SIZE])
+	dict := make(map[byte]rune)
+	for i := range dictLength {
+		start := DICT_LENGTH_SIZE + i*DICT_ROW_SIZE
+		r := rune(binary.BigEndian.Uint32(data[start : start+4]))
+		v := data[start+4]
+		dict[v] = r
+	}
+
+	sb := strings.Builder{}
+	start := DICT_LENGTH_SIZE + dictLength*DICT_ROW_SIZE
+	for _, b := range data[start:] {
+		letter, ok := dict[b]
+		if ok {
+			sb.WriteRune(letter)
+		} else {
+			log.Fatalf("dictionary could not handle %v", b)
+		}
+	}
+
+	fmt.Println(sb.String())
 }
 
 func DecompressOriginal(input []byte, dict map[rune]byte) (result string, err error) {
@@ -59,7 +101,7 @@ func DecompressOriginal(input []byte, dict map[rune]byte) (result string, err er
 	return
 }
 
-func Compress(input string) (result []byte, dict map[rune]byte, err error) {
+func CompressStr(input string) (result []byte, dict map[rune]byte, err error) {
 	heap := NewHeap(func(a, b *HuffmanNode) bool {
 		return a.Frequency < b.Frequency
 	})
