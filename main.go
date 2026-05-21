@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// because we're only doing ASCII stuffs, 256 is outside of that range
+const EOF uint16 = 256
+
 func main() {
 	input := "Hello World"
 
@@ -41,15 +44,17 @@ func Decompress(compressed []byte, root *HuffmanNode) string {
 			currentNode = currentNode.RightNode
 		}
 
+		if currentNode == nil {
+			break
+		}
+
 		if currentNode.IsLeaf() {
-			sb.WriteRune(currentNode.Data)
+			if currentNode.Data == EOF {
+				break
+			}
+			sb.WriteRune(rune(currentNode.Data))
 			currentNode = root
 		}
-	}
-
-	if currentNode.IsLeaf() {
-		sb.WriteRune(currentNode.Data)
-		currentNode = root
 	}
 
 	return sb.String()
@@ -62,8 +67,9 @@ func Compress(input string) ([]byte, *HuffmanNode, error) {
 
 	frequencies := GetFrequencies(input)
 	for key, value := range frequencies {
-		heap.Push(NewHuffmanNode(key, value, nil, nil))
+		heap.Push(NewHuffmanNode(uint16(key), value, nil, nil))
 	}
+	heap.Push(NewHuffmanNode(EOF, 1, nil, nil))
 
 	for heap.Length() > 1 {
 		nodeA, ok := heap.Pop()
@@ -82,20 +88,24 @@ func Compress(input string) ([]byte, *HuffmanNode, error) {
 		return nil, nil, errors.New("Expected a root node")
 	}
 
-	runeToCode := make(map[rune]Code)
-	Traverse(root, []byte{}, &runeToCode)
+	characterToCode := make(map[uint16]Code)
+	Traverse(root, []byte{}, &characterToCode)
 
 	bitWriter := NewBitWriter(10)
 	for _, c := range input {
-		code := runeToCode[c]
+		code := characterToCode[uint16(c)]
 		bitWriter.Write(code.Value, code.Length)
 	}
+
+	eofCode := characterToCode[EOF]
+	bitWriter.Write(eofCode.Value, eofCode.Length)
+
 	bitWriter.Flush()
 
 	return bitWriter.Data, root, nil
 }
 
-func Traverse(node *HuffmanNode, code []byte, dict *map[rune]Code) {
+func Traverse(node *HuffmanNode, code []byte, dict *map[uint16]Code) {
 	if node == nil {
 		return
 	}
@@ -136,13 +146,13 @@ func GetFrequencies(raw string) map[rune]int {
 }
 
 type HuffmanNode struct {
-	Data      rune
+	Data      uint16
 	Frequency int
 	LeftNode  *HuffmanNode
 	RightNode *HuffmanNode
 }
 
-func NewHuffmanNode(data rune, frequency int, leftNode *HuffmanNode, rightNode *HuffmanNode) *HuffmanNode {
+func NewHuffmanNode(data uint16, frequency int, leftNode *HuffmanNode, rightNode *HuffmanNode) *HuffmanNode {
 	node := &HuffmanNode{
 		Data:      data,
 		Frequency: frequency,
