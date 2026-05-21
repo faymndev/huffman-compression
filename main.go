@@ -65,7 +65,7 @@ func Compress(input string) (result []byte, huffmanNode *HuffmanNode, err error)
 	}
 
 	dict := make(map[rune]Code)
-	Traverse(root, []int{}, &dict)
+	Traverse(root, []byte{}, &dict)
 
 	// for _, r := range input {
 	// 	// result = append(result, (d[r].Bits))
@@ -74,7 +74,7 @@ func Compress(input string) (result []byte, huffmanNode *HuffmanNode, err error)
 	return
 }
 
-func Traverse(node *HuffmanNode, code []int, dict *map[rune]Code) {
+func Traverse(node *HuffmanNode, code []byte, dict *map[rune]Code) {
 	if node == nil {
 		return
 	}
@@ -91,18 +91,18 @@ func Traverse(node *HuffmanNode, code []int, dict *map[rune]Code) {
 }
 
 type Code struct {
-	Value uint64
-	Bits  int
+	Value  byte
+	Length int
 }
 
-func NewCode(code []int) Code {
-	var value uint64 = 0
+func NewCode(code []byte) Code {
+	var value byte = 0
 	for _, v := range code {
-		value = value*10 + uint64(v)
+		value = (value << 1) | v
 	}
 	return Code{
-		Value: value,
-		Bits:  len(code),
+		Value:  value,
+		Length: len(code),
 	}
 }
 
