@@ -11,7 +11,7 @@ import (
 const EOF uint16 = 256
 
 func main() {
-	input := "Hello World. This is a simple project that demonstrates the Huffman compression algorithm I learned in school. It only works with ASCII characters, for simplicity."
+	input := "This project demonstrates how to compress and decompress text with Huffman compression."
 
 	compressed, root, err := Compress(input)
 	if err != nil {
