@@ -11,7 +11,7 @@ import (
 const EOF uint16 = 256
 
 func main() {
-	input := "Hello World"
+	input := "Hello World. This is a simple project that demonstrates the Huffman compression algorithm I learned in school. It only works with ASCII characters, for simplicity."
 
 	compressed, root, err := Compress(input)
 	if err != nil {
@@ -26,7 +26,7 @@ func main() {
 	fmt.Printf("Compressed %d bytes\n", len(compressed))
 	fmt.Printf("%.2f%% reduction in size\n", savings)
 
-	fmt.Printf("Decompressed: %s\n", Decompress(compressed, root))
+	fmt.Printf("\nDecompressed:\n%s\n", Decompress(compressed, root))
 }
 
 func Decompress(compressed []byte, root *HuffmanNode) string {
