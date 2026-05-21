@@ -8,32 +8,54 @@ import (
 )
 
 func main() {
-	compressed, dict, err := Compress("Hello World")
+	input := "Hello World"
+
+	compressed, root, err := Compress(input)
 	if err != nil {
 		panic(err)
 	}
 
-	decompressed, err := DecompressOriginal(compressed, dict)
-	fmt.Println(decompressed)
+	originalSize := float64(len(input) * 8)
+	compressedSize := float64(len(compressed) * 8)
+	savings := 100 * (compressedSize - originalSize) / originalSize
+
+	fmt.Printf("Original   %d bytes\n", len(input))
+	fmt.Printf("Compressed %d bytes\n", len(compressed))
+	fmt.Printf("%.2f%% reduction in size\n", savings)
+
+	fmt.Printf("Decompressed: %s\n", Decompress(compressed, root))
 }
 
-func DecompressOriginal(input []byte, dict map[rune]byte) (result string, err error) {
-	// invert dictionary to go from byte to rune
-	inverted := make(map[byte]rune)
-	for key, value := range dict {
-		inverted[value] = key
+func Decompress(compressed []byte, root *HuffmanNode) string {
+	var sb strings.Builder
+
+	currentNode := root
+	br := NewBitReader(compressed)
+
+	for br.HasNext() {
+		b := br.Next()
+
+		if b == 0 {
+			currentNode = currentNode.LeftNode
+		} else {
+			currentNode = currentNode.RightNode
+		}
+
+		if currentNode.IsLeaf() {
+			sb.WriteRune(currentNode.Data)
+			currentNode = root
+		}
 	}
 
-	r := strings.Builder{}
-	for _, i := range input {
-		r.WriteRune(inverted[i])
+	if currentNode.IsLeaf() {
+		sb.WriteRune(currentNode.Data)
+		currentNode = root
 	}
 
-	result = r.String()
-	return
+	return sb.String()
 }
 
-func Compress(input string) (result []byte, huffmanNode *HuffmanNode, err error) {
+func Compress(input string) ([]byte, *HuffmanNode, error) {
 	heap := NewHeap(func(a, b *HuffmanNode) bool {
 		return a.Frequency < b.Frequency
 	})
@@ -46,32 +68,31 @@ func Compress(input string) (result []byte, huffmanNode *HuffmanNode, err error)
 	for heap.Length() > 1 {
 		nodeA, ok := heap.Pop()
 		if !ok {
-			err = errors.New("Expected a smallest node")
-			return
+			return nil, nil, errors.New("Expected a smallest node")
 		}
 		nodeB, ok := heap.Pop()
 		if !ok {
-			err = errors.New("Expected a smallest node")
-			return
+			return nil, nil, errors.New("Expected a smallest node")
 		}
 		heap.Push(NewHuffmanNode(0, 0, nodeA, nodeB))
 	}
 
 	root, ok := heap.Pop()
-	huffmanNode = root
 	if !ok {
-		err = errors.New("Expected a root node")
-		return
+		return nil, nil, errors.New("Expected a root node")
 	}
 
-	dict := make(map[rune]Code)
-	Traverse(root, []byte{}, &dict)
+	runeToCode := make(map[rune]Code)
+	Traverse(root, []byte{}, &runeToCode)
 
-	// for _, r := range input {
-	// 	// result = append(result, (d[r].Bits))
-	// }
+	bitWriter := NewBitWriter(10)
+	for _, c := range input {
+		code := runeToCode[c]
+		bitWriter.Write(code.Value, code.Length)
+	}
+	bitWriter.Flush()
 
-	return
+	return bitWriter.Data, root, nil
 }
 
 func Traverse(node *HuffmanNode, code []byte, dict *map[rune]Code) {
@@ -137,4 +158,8 @@ func NewHuffmanNode(data rune, frequency int, leftNode *HuffmanNode, rightNode *
 	}
 
 	return node
+}
+
+func (h *HuffmanNode) IsLeaf() bool {
+	return h.LeftNode == nil && h.RightNode == nil
 }
